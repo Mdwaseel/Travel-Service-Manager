@@ -2134,6 +2134,53 @@ function tsm_assign_locations_page() {
         'orderby' => 'title',
         'order' => 'ASC'
     ]);
+            $filter_vehicle = isset($_GET['filter_vehicle']) ? intval($_GET['filter_vehicle']) : 0;
+$filter_location = isset($_GET['filter_location']) ? intval($_GET['filter_location']) : 0;
+$filter_available = isset($_GET['filter_available']) ? ($_GET['filter_available'] === '0' ? 0 : 1) : -1; // -1 means all
+$sort_by = isset($_GET['sort_by']) && in_array($_GET['sort_by'], ['id', 'vehicle_name', 'location_name', 'price', 'extra_km_price', 'extra_hour_price', 'max_range', 'available']) ? $_GET['sort_by'] : 'location_name';
+$sort_order = isset($_GET['sort_order']) && in_array(strtoupper($_GET['sort_order']), ['ASC', 'DESC']) ? strtoupper($_GET['sort_order']) : 'ASC';
+
+// Build the SQL query with filters and sorting
+$sql = "
+    SELECT a.*, v.post_title as vehicle_name, l.name as location_name, pm.meta_value as vehicle_type, pm2.meta_value as fuel_type
+    FROM {$wpdb->prefix}tsm_vehicle_assignments a
+    LEFT JOIN {$wpdb->posts} v ON a.vehicle_id = v.ID
+    LEFT JOIN {$wpdb->prefix}tsm_locations l ON a.location_id = l.id
+    LEFT JOIN {$wpdb->postmeta} pm ON a.vehicle_id = pm.post_id AND pm.meta_key = '_tsm_vehicle_type'
+    LEFT JOIN {$wpdb->postmeta} pm2 ON a.vehicle_id = pm2.post_id AND pm2.meta_key = '_tsm_fuel_type'
+";
+
+// Add WHERE clauses for filters
+$where_clauses = [];
+if ($filter_vehicle > 0) {
+    $where_clauses[] = $wpdb->prepare("a.vehicle_id = %d", $filter_vehicle);
+}
+if ($filter_location > 0) {
+    $where_clauses[] = $wpdb->prepare("a.location_id = %d", $filter_location);
+}
+if ($filter_available !== -1) {
+    $where_clauses[] = $wpdb->prepare("a.available = %d", $filter_available);
+}
+if (!empty($where_clauses)) {
+    $sql .= " WHERE " . implode(" AND ", $where_clauses);
+}
+
+// Add ORDER BY clause
+$sort_column = $sort_by === 'vehicle_name' ? 'v.post_title' : ($sort_by === 'location_name' ? 'l.name' : 'a.' . $sort_by);
+$sql .= " ORDER BY " . esc_sql($sort_column) . " " . esc_sql($sort_order);
+
+// Execute the query
+$assignments = $wpdb->get_results($sql);
+
+// Get vehicles and locations for filter dropdowns
+$vehicles = get_posts([
+    'post_type' => 'tsm_vehicle',
+    'numberposts' => -1,
+    'orderby' => 'title',
+    'order' => 'ASC'
+]);
+$locations = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}tsm_locations ORDER BY name");
+
     
     $locations = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}tsm_locations ORDER BY name");
     
@@ -2318,51 +2365,134 @@ function tsm_assign_locations_page() {
         <?php endif; ?>
         
         <h2>Existing Assignments</h2>
-        <table class="wp-list-table widefat fixed striped">
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Vehicle</th>
-                    <th>Location</th>
-                    <th>Price</th>
-                    <th>Extra KM Price</th>
-                    <th>Extra Hour Price</th>
-                    <th>Max Range (km)</th>
-                    <th>Available</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (empty($assignments)): ?>
-                    <tr>
-                        <td colspan="9">No assignments found.</td>
-                    </tr>
-                <?php else: ?>
-                    <?php foreach ($assignments as $assignment): ?>
-                        <tr>
-                            <td><?php echo esc_html($assignment->id); ?></td>
-                            <td><?php echo esc_html($assignment->vehicle_name ?: 'Vehicle ID ' . $assignment->vehicle_id); ?></td>
-                            <td><?php echo esc_html($assignment->location_name ?: 'Location ID ' . $assignment->location_id); ?></td>
-                            <td><?php echo esc_html(number_format($assignment->price, 2)); ?></td>
-                            <td><?php echo $assignment->vehicle_type === 'Boat' ? 'N/A' : esc_html(number_format($assignment->extra_km_price, 2)); ?></td>
-                            <td><?php echo $assignment->vehicle_type === 'Boat' ? 'N/A' : esc_html(number_format($assignment->extra_hour_price, 2)); ?></td>
-                            <td><?php echo $assignment->vehicle_type === 'Car' ? esc_html(number_format($assignment->max_range, 2)) : 'N/A'; ?></td>
-                            <td><?php echo $assignment->available ? 'Yes' : 'No'; ?></td>
-                            <td>
-                                <a href="<?php echo wp_nonce_url(
-                                    admin_url('admin.php?page=tsm-assign-locations&edit_assignment=' . $assignment->id),
-                                    'tsm_edit_assignment_nonce'
-                                ); ?>" class="button button-secondary">Edit</a>
-                                <a href="<?php echo wp_nonce_url(
-                                    admin_url('admin.php?page=tsm-assign-locations&delete_assignment=' . $assignment->id),
-                                    'tsm_delete_assignment'
-                                ); ?>" class="button button-secondary" onclick="return confirm('Are you sure?')">Delete</a>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
+
+<div class="wrap">
+    <h1>Assign Locations to Vehicles</h1>
+    
+    <!-- Existing form code for adding/editing assignments remains unchanged -->
+    <?php if ($edit_assignment): ?>
+        <!-- Your existing edit form code here -->
+    <?php else: ?>
+        <!-- Your existing add form code here -->
+    <?php endif; ?>
+    
+    <h2>Existing Assignments</h2>
+    
+    <!-- Filter and Sort Form -->
+    <form method="get" style="margin-bottom: 20px;">
+        <input type="hidden" name="page" value="tsm-assign-locations">
+        <table class="form-table">
+            <tr>
+                <th scope="row"><label for="filter_vehicle">Filter by Vehicle</label></th>
+                <td>
+                    <select name="filter_vehicle" id="filter_vehicle">
+                        <option value="0">All Vehicles</option>
+                        <?php foreach ($vehicles as $vehicle): ?>
+                            <option value="<?php echo esc_attr($vehicle->ID); ?>" <?php selected($filter_vehicle, $vehicle->ID); ?>>
+                                <?php echo esc_html($vehicle->post_title); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label for="filter_location">Filter by Location</label></th>
+                <td>
+                    <select name="filter_location" id="filter_location">
+                        <option value="0">All Locations</option>
+                        <?php foreach ($locations as $location): ?>
+                            <option value="<?php echo esc_attr($location->id); ?>" <?php selected($filter_location, $location->id); ?>>
+                                <?php echo esc_html($location->name); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label for="filter_available">Filter by Availability</label></th>
+                <td>
+                    <select name="filter_available" id="filter_available">
+                        <option value="-1" <?php selected($filter_available, -1); ?>>All</option>
+                        <option value="1" <?php selected($filter_available, 1); ?>>Available</option>
+                        <option value="0" <?php selected($filter_available, 0); ?>>Not Available</option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label for="sort_by">Sort By</label></th>
+                <td>
+                    <select name="sort_by" id="sort_by">
+                        <option value="id" <?php selected($sort_by, 'id'); ?>>ID</option>
+                        <option value="vehicle_name" <?php selected($sort_by, 'vehicle_name'); ?>>Vehicle</option>
+                        <option value="location_name" <?php selected($sort_by, 'location_name'); ?>>Location</option>
+                        <option value="price" <?php selected($sort_by, 'price'); ?>>Price</option>
+                        <option value="extra_km_price" <?php selected($sort_by, 'extra_km_price'); ?>>Extra KM Price</option>
+                        <option value="extra_hour_price" <?php selected($sort_by, 'extra_hour_price'); ?>>Extra Hour Price</option>
+                        <option value="max_range" <?php selected($sort_by, 'max_range'); ?>>Max Range</option>
+                        <option value="available" <?php selected($sort_by, 'available'); ?>>Available</option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><label for="sort_order">Sort Order</label></th>
+                <td>
+                    <select name="sort_order" id="sort_order">
+                        <option value="ASC" <?php selected($sort_order, 'ASC'); ?>>Ascending</option>
+                        <option value="DESC" <?php selected($sort_order, 'DESC'); ?>>Descending</option>
+                    </select>
+                </td>
+            </tr>
         </table>
+        <input type="submit" class="button button-secondary" value="Apply Filters">
+        <a href="<?php echo esc_url(admin_url('admin.php?page=tsm-assign-locations')); ?>" class="button button-secondary">Clear Filters</a>
+    </form>
+
+    <!-- Assignments Table -->
+    <table class="wp-list-table widefat fixed striped">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Vehicle</th>
+                <th>Location</th>
+                <th>Price</th>
+                <th>Extra KM Price</th>
+                <th>Extra Hour Price</th>
+                <th>Max Range (km)</th>
+                <th>Available</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if (empty($assignments)): ?>
+                <tr>
+                    <td colspan="9">No assignments found.</td>
+                </tr>
+            <?php else: ?>
+                <?php foreach ($assignments as $assignment): ?>
+                    <tr>
+                        <td><?php echo esc_html($assignment->id); ?></td>
+                        <td><?php echo esc_html($assignment->vehicle_name ?: 'Vehicle ID ' . $assignment->vehicle_id); ?></td>
+                        <td><?php echo esc_html($assignment->location_name ?: 'Location ID ' . $assignment->location_id); ?></td>
+                        <td><?php echo esc_html(number_format($assignment->price, 2)); ?></td>
+                        <td><?php echo $assignment->vehicle_type === 'Boat' ? 'N/A' : esc_html(number_format($assignment->extra_km_price, 2)); ?></td>
+                        <td><?php echo $assignment->vehicle_type === 'Boat' ? 'N/A' : esc_html(number_format($assignment->extra_hour_price, 2)); ?></td>
+                        <td><?php echo $assignment->vehicle_type === 'Car' ? esc_html(number_format($assignment->max_range, 2)) : 'N/A'; ?></td>
+                        <td><?php echo $assignment->available ? 'Yes' : 'No'; ?></td>
+                        <td>
+                            <a href="<?php echo wp_nonce_url(
+                                admin_url('admin.php?page=tsm-assign-locations&edit_assignment=' . $assignment->id),
+                                'tsm_edit_assignment_nonce'
+                            ); ?>" class="button button-secondary">Edit</a>
+                            <a href="<?php echo wp_nonce_url(
+                                admin_url('admin.php?page=tsm-assign-locations&delete_assignment=' . $assignment->id),
+                                'tsm_delete_assignment'
+                            ); ?>" class="button button-secondary" onclick="return confirm('Are you sure?')">Delete</a>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </tbody>
+    </table>
     </div>
     <?php
 }
