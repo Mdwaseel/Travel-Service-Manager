@@ -34,6 +34,7 @@ function tsm_create_tables() {
         extra_hour_price decimal(10,2) NOT NULL,
         max_range decimal(10,2) DEFAULT NULL,
         available TINYINT(1) NOT NULL DEFAULT 1,
+        rental_type VARCHAR(50) NOT NULL DEFAULT 'Round Trip',
         PRIMARY KEY (id),
         KEY vehicle_id (vehicle_id),
         KEY location_id (location_id)
@@ -56,7 +57,10 @@ function tsm_create_tables() {
         if (empty($max_range_exists)) {
             $wpdb->query("ALTER TABLE $assignments_table ADD max_range decimal(10,2) DEFAULT NULL");
         }
-        update_option('tsm_schema_version', '2.1');
+        if (empty($column_exists)) {
+        $wpdb->query("ALTER TABLE $assignments_table ADD rental_type VARCHAR(50) NOT NULL DEFAULT 'Round Trip'");
+        }
+        update_option('tsm_schema_version', '2.2');
     }
 }
 register_activation_hook(__FILE__, 'tsm_create_tables');
@@ -1947,7 +1951,9 @@ function tsm_assign_locations_page() {
         $extra_hour_price = isset($_POST['extra_hour_price']) && is_numeric($_POST['extra_hour_price']) ? floatval($_POST['extra_hour_price']) : null;
         $max_range = isset($_POST['max_range']) && is_numeric($_POST['max_range']) ? floatval($_POST['max_range']) : null;
         $available = isset($_POST['available']) && in_array($_POST['available'], ['0', '1']) ? intval($_POST['available']) : 1;
-        
+        $rental_type = isset($_POST['rental_type']) && in_array($_POST['rental_type'], ['Round Trip', 'Single Trip', 'Hourly Rental', 'Daily Rental']) ? sanitize_text_field($_POST['rental_type']) : 'Round Trip';
+
+
         $errors = [];
         if ($vehicle_id <= 0) {
             $errors[] = 'Please select a valid vehicle.';
@@ -1984,7 +1990,8 @@ function tsm_assign_locations_page() {
             $existing = $wpdb->get_var($wpdb->prepare(
                 "SELECT id FROM {$wpdb->prefix}tsm_vehicle_assignments WHERE vehicle_id = %d AND location_id = %d",
                 $vehicle_id,
-                $location_id
+                $location_id,
+                
             ));
             if ($existing) {
                 $errors[] = 'This vehicle is already assigned to this location.';
@@ -1998,9 +2005,10 @@ function tsm_assign_locations_page() {
                 'price' => $price,
                 'extra_km_price' => $extra_km_price,
                 'extra_hour_price' => $extra_hour_price,
-                'available' => $available
+                'available' => $available,
+                'rental_type' => $rental_type
             ];
-            $format = ['%d', '%d', '%f', '%f', '%f', '%d'];
+            $format = ['%d', '%d', '%f', '%f', '%f', '%d','%s'];
             
             // Only include max_range for cars
             if ($vehicle_type === 'Car') {
@@ -2036,6 +2044,7 @@ function tsm_assign_locations_page() {
         $extra_hour_price = isset($_POST['extra_hour_price']) && is_numeric($_POST['extra_hour_price']) ? floatval($_POST['extra_hour_price']) : null;
         $max_range = isset($_POST['max_range']) && is_numeric($_POST['max_range']) ? floatval($_POST['max_range']) : null;
         $available = isset($_POST['available']) && in_array($_POST['available'], ['0', '1']) ? intval($_POST['available']) : 1;
+        $rental_type = isset($_POST['rental_type']) && in_array($_POST['rental_type'], ['Round Trip', 'Single Trip', 'Hourly Rental', 'Daily Rental']) ? sanitize_text_field($_POST['rental_type']) : 'Round Trip';
         
         $errors = [];
         if ($assignment_id <= 0) {
@@ -2071,9 +2080,10 @@ function tsm_assign_locations_page() {
                 'price' => $price,
                 'extra_km_price' => $extra_km_price,
                 'extra_hour_price' => $extra_hour_price,
-                'available' => $available
+                'available' => $available,
+                'rental_type' => $rental_type
             ];
-            $format = ['%f', '%f', '%f', '%d'];
+            $format = ['%f', '%f', '%f', '%d', '%s'];
             
             // Only include max_range for cars
             if ($vehicle_type === 'Car') {
@@ -2252,6 +2262,18 @@ $locations = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}tsm_locations ORDE
                             <p class="description">Indicate if the vehicle is available at this location.</p>
                         </td>
                     </tr>
+                    <tr>
+                        <th scope="row"><label for="rental_type">Rental Type</label></th>
+                        <td>
+                            <select name="rental_type" id="rental_type" required>
+                                <option value="Round Trip" <?php selected($edit_assignment->rental_type, 'Round Trip'); ?>>Round Trip</option>
+                                <option value="Single Trip" <?php selected($edit_assignment->rental_type, 'Single Trip'); ?>>Single Trip</option>
+                                <option value="Hourly Rental" <?php selected($edit_assignment->rental_type, 'Hourly Rental'); ?>>Hourly Rental</option>
+                                <option value="Daily Rental" <?php selected($edit_assignment->rental_type, 'Daily Rental'); ?>>Daily Rental</option>
+                            </select>
+                            <p class="description">Select the rental type for this vehicle at this location.</p>
+                        </td>
+                    </tr>
                 </table>
                 
                 <input type="submit" name="edit_assignment" class="button button-primary" value="Update Assignment">
@@ -2330,6 +2352,18 @@ $locations = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}tsm_locations ORDE
                                 <option value="0">No</option>
                             </select>
                             <p class="description">Indicate if the vehicle is available at this location.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="rental_type">Rental Type</label></th>
+                        <td>
+                            <select name="rental_type" id="rental_type" required>
+                                <option value="Round Trip">Round Trip</option>
+                                <option value="Single Trip">Single Trip</option>
+                                <option value="Hourly Rental">Hourly Rental</option>
+                                <option value="Daily Rental">Daily Rental</option>
+                            </select>
+                            <p class="description">Select the rental type for this vehicle at this location.</p>
                         </td>
                     </tr>
                 </table>
@@ -2459,6 +2493,7 @@ $locations = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}tsm_locations ORDE
                 <th>Extra Hour Price</th>
                 <th>Max Range (km)</th>
                 <th>Available</th>
+                <th>Rental Type</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -2477,6 +2512,7 @@ $locations = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}tsm_locations ORDE
                         <td><?php echo $assignment->vehicle_type === 'Boat' ? 'N/A' : esc_html(number_format($assignment->extra_km_price, 2)); ?></td>
                         <td><?php echo $assignment->vehicle_type === 'Boat' ? 'N/A' : esc_html(number_format($assignment->extra_hour_price, 2)); ?></td>
                         <td><?php echo $assignment->vehicle_type === 'Car' ? esc_html(number_format($assignment->max_range, 2)) : 'N/A'; ?></td>
+                        <td><?php echo esc_html($assignment->rental_type); ?></td>
                         <td><?php echo $assignment->available ? 'Yes' : 'No'; ?></td>
                         <td>
                             <a href="<?php echo wp_nonce_url(
@@ -2545,15 +2581,14 @@ function tsm_display_vehicles_shortcode($atts) {
     $all_locations = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}tsm_locations ORDER BY name");
     
     // Prepare the base query
-    $query = "
-        SELECT v.*, a.price, a.extra_km_price, a.extra_hour_price, a.max_range, a.available, l.name as location_name
-        FROM {$wpdb->posts} v
-        JOIN {$wpdb->prefix}tsm_vehicle_assignments a ON v.ID = a.vehicle_id
-        JOIN {$wpdb->prefix}tsm_locations l ON a.location_id = l.id
-        WHERE v.post_type = 'tsm_vehicle' 
-        AND v.post_status = 'publish'
-        AND a.available = 1
-    ";
+   $query = "
+    SELECT v.*, a.price, a.extra_km_price, a.extra_hour_price, a.max_range, a.available, a.rental_type, l.name as location_name
+    FROM {$wpdb->posts} v
+    LEFT JOIN {$wpdb->prefix}tsm_vehicle_assignments a ON v.ID = a.vehicle_id
+    LEFT JOIN {$wpdb->prefix}tsm_locations l ON a.location_id = l.id
+    WHERE v.post_type = 'tsm_vehicle' 
+    AND v.post_status = 'publish'
+";
     
     // Add location filter if specified
     if (!empty($atts['location'])) {
@@ -2633,6 +2668,7 @@ function tsm_display_vehicles_shortcode($atts) {
             if ($vehicle_type === 'Car') {
                 $output .= '<p><i class="fas fa-solid fa-gauge"></i><strong>Max Range:</strong> ' . esc_html(number_format($vehicle->max_range, 2)) . ' km</p>';
             }
+            $output .= '<p><i class="fas fa-ticket-alt"></i><strong>Rental Type:</strong> ' . esc_html($vehicle->rental_type) . '</p>';
             $output .= '<p><i class="fas fa-check"></i><strong>Available:</strong> Yes</p>';
             $output .= '</div>';
             
@@ -3202,3 +3238,12 @@ function tsm_enqueue_styles() {
 }
 add_action('wp_enqueue_scripts', 'tsm_enqueue_styles');
 
+function tsm_add_rental_type_column() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'tsm_vehicle_assignments';
+    $column = $wpdb->get_results("SHOW COLUMNS FROM `$table_name` LIKE 'rental_type'");
+    if (empty($column)) {
+        $wpdb->query("ALTER TABLE `$table_name` ADD `rental_type` VARCHAR(50) NOT NULL DEFAULT 'Round Trip'");
+    }
+}
+add_action('admin_init', 'tsm_add_rental_type_column');

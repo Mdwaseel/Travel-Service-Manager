@@ -549,7 +549,7 @@ if (have_posts()) :
             <!-- Tour Title and Description -->
             <div class="tsm-tour-header">
                 <h1><i class="fas fa-map-marked-alt"></i> <?php the_title(); ?></h1>
-                <p><?php echo wp_strip_all_tags(get_the_excerpt()); ?></p>
+                <div><?php the_content(); ?></div>
             </div>
 
 
