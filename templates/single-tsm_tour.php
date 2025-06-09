@@ -433,6 +433,10 @@ if (have_posts()) :
             .tsm-contact-card a:hover {
                 background-color: #f8f9fa;
             }
+            .tsm-contact-card i {
+                color:#ef7024;
+
+            }
 
             /* Buttons */
             .tsm-btn {
