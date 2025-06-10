@@ -2619,7 +2619,9 @@ function tsm_display_vehicles_shortcode($atts) {
         $output .= '<option value="all">All Locations</option>';
         foreach ($all_locations as $location) {
             
-            $output .= '<option value="' . esc_attr($location->name) . '">' . esc_html($location->name) . '</option>';
+            if ($location->name !== 'Outstations') {
+                $output .= '<option value="' . esc_attr($location->name) . '">' . esc_html($location->name) . '</option>';
+            }
         }
         $output .= '</select>';
     }
