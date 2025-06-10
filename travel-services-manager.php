@@ -2581,7 +2581,7 @@ function tsm_display_vehicles_shortcode($atts) {
     $all_locations = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}tsm_locations ORDER BY name");
     
     // Prepare the base query
-   $query = "
+    $query = "
     SELECT v.*, a.price, a.extra_km_price, a.extra_hour_price, a.max_range, a.available, a.rental_type, l.name as location_name
     FROM {$wpdb->posts} v
     LEFT JOIN {$wpdb->prefix}tsm_vehicle_assignments a ON v.ID = a.vehicle_id
@@ -2612,14 +2612,17 @@ function tsm_display_vehicles_shortcode($atts) {
     // Start output with filter dropdown
     $output = '<div class="tsm-vehicle-filter">';
     
-    // Add location filter dropdown
-    $output .= '<select id="tsm-location-filter" class="tsm-filter-dropdown">';
-    $output .= '<option value="" selected>Please select your preferred location</option>';
-    $output .= '<option value="all">All Locations</option>';
-    foreach ($all_locations as $location) {
-        $output .= '<option value="' . esc_attr($location->name) . '">' . esc_html($location->name) . '</option>';
+    // Add location filter dropdown only if no location is specified in shortcode
+    if (empty($atts['location'])) {
+        $output .= '<select id="tsm-location-filter" class="tsm-filter-dropdown">';
+        $output .= '<option value="" selected>Please select your preferred location</option>';
+        $output .= '<option value="all">All Locations</option>';
+        foreach ($all_locations as $location) {
+            
+            $output .= '<option value="' . esc_attr($location->name) . '">' . esc_html($location->name) . '</option>';
+        }
+        $output .= '</select>';
     }
-    $output .= '</select>';
     
     // Add vehicle type filter if type parameter is set
     if (!empty($atts['type'])) {
@@ -2629,10 +2632,10 @@ function tsm_display_vehicles_shortcode($atts) {
     $output .= '</div>';
     
     $output .= '<div class="tsm-vehicle-container">';
-    $output .= '<div class="tsm-vehicle-grid" style="display: none;">';
-    
     // Output all vehicles in a single grid
     if (!empty($vehicles)) {
+        $output .= '<div class="tsm-vehicle-grid"' . (empty($atts['location']) ? ' style="display: none;"' : '') . '>';
+        
         foreach ($vehicles as $vehicle) {
             $vehicle_type = get_post_meta($vehicle->ID, '_tsm_vehicle_type', true);
             $fuel_type = get_post_meta($vehicle->ID, '_tsm_fuel_type', true);
@@ -2678,13 +2681,17 @@ function tsm_display_vehicles_shortcode($atts) {
             
             $output .= '</div>'; // .tsm-vehicle
         }
+        
+        $output .= '</div>'; // .tsm-vehicle-grid
     }
     
-    $output .= '</div>'; // .tsm-vehicle-grid
-    
     // No vehicles message
-    $output .= '<div class="tsm-no-results">';
-    $output .= '<p>Select your location to see the vehicles</p>';
+    $output .= '<div class="tsm-no-results"' . (empty($atts['location']) ? '' : ' style="display: none;"') . '>';
+    if (empty($atts['location'])) {
+        $output .= '<p>Select your location to see the vehicles</p>';
+    } else {
+        $output .= '<p>No vehicles available at this location.</p><a href="' . esc_url($services_url) . '" class="tsm-btn services">Explore Other Services</a>';
+    }
     $output .= '</div>';
     
     $output .= '</div>'; // .tsm-vehicle-container
@@ -2693,10 +2700,18 @@ function tsm_display_vehicles_shortcode($atts) {
     $output .= '
     <script>
     jQuery(document).ready(function($) {
-        // Initially hide all vehicles
+        // Initially hide/show based on whether location is preselected
+        ' . (empty($atts['location']) ? '
         $(".tsm-vehicle-grid").hide();
         $(".tsm-no-results").show();
-
+        ' : '
+        $(".tsm-vehicle-grid").show();
+        $(".tsm-vehicle").show();
+        if ($(".tsm-vehicle").length === 0) {
+            $(".tsm-no-results").show();
+        }
+        ') . '
+        
         $("#tsm-location-filter").on("change", function() {
             var selectedLocation = $(this).val();
             var vehicleType = $("#tsm-vehicle-type").val() || "";
@@ -2754,7 +2769,7 @@ function tsm_display_vehicles_shortcode($atts) {
     return $output;
 }
 add_shortcode('show_vehicles', 'tsm_display_vehicles_shortcode');
-// === Shortcode for Tours ===
+
 function tsm_display_tours_shortcode($atts) {
     $atts = shortcode_atts([], $atts, 'show_tours');
     
