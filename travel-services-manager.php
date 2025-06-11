@@ -2626,7 +2626,7 @@ function tsm_register_custom_post_types() {
 add_action('init', 'tsm_register_custom_post_types');
 
 // === Shortcode for Vehicles ===
-// === Shortcode for Vehicles ===
+
 function tsm_display_vehicles_shortcode($atts) {
     global $wpdb;
     
@@ -2640,22 +2640,26 @@ function tsm_display_vehicles_shortcode($atts) {
     $contact_url = get_option('tsm_contact_url', '#');
     $services_url = get_permalink(get_page_by_path('services')) ?: '#';
     
-    // Get all locations for the filter dropdown
-    $all_locations = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}tsm_locations ORDER BY name");
+    // Get all locations for the filter dropdown (only if not Boat)
+    $all_locations = ($atts['type'] !== 'Boat' && $atts['location'] !== 'Outstations') ? $wpdb->get_results("SELECT * FROM {$wpdb->prefix}tsm_locations ORDER BY name") : [];
     
     // Prepare the base query
     $query = "
-    SELECT v.*, a.price, a.extra_km_price, a.extra_hour_price, a.max_range, a.available, a.rental_type, l.name as location_name
-    FROM {$wpdb->posts} v
-    LEFT JOIN {$wpdb->prefix}tsm_vehicle_assignments a ON v.ID = a.vehicle_id
-    LEFT JOIN {$wpdb->prefix}tsm_locations l ON a.location_id = l.id
-    WHERE v.post_type = 'tsm_vehicle' 
-    AND v.post_status = 'publish'
-";
+        SELECT v.*, a.price, a.extra_km_price, a.extra_hour_price, a.max_range, a.available, a.rental_type, l.name as location_name
+        FROM {$wpdb->posts} v
+        LEFT JOIN {$wpdb->prefix}tsm_vehicle_assignments a ON v.ID = a.vehicle_id
+        LEFT JOIN {$wpdb->prefix}tsm_locations l ON a.location_id = l.id
+        WHERE v.post_type = 'tsm_vehicle' 
+        AND v.post_status = 'publish'
+    ";
     
     // Add location filter if specified
-    if (!empty($atts['location'])) {
+    if (!empty($atts['location']) && $atts['type'] !== 'Boat') {
         $query .= $wpdb->prepare(" AND l.name = %s", $atts['location']);
+    } elseif ($atts['type'] !== 'Boat') {
+        // Default to Rajamundry for non-boat vehicles
+        $query .= $wpdb->prepare(" AND l.name = %s", 'Rajamundry');
+        $atts['location'] = 'Rajamundry'; // Set default location for dropdown
     }
     
     // Add vehicle type filter if specified
@@ -2672,18 +2676,18 @@ function tsm_display_vehicles_shortcode($atts) {
     
     $vehicles = $wpdb->get_results($query);
     
-    // Start output with filter dropdown
+    // Start output
     $output = '<div class="tsm-vehicle-filter">';
     
-    // Add location filter dropdown only if no location is specified in shortcode
-    if (empty($atts['location'])) {
+    // Add location filter dropdown only if vehicle type is not Boat
+    if ($atts['type'] !== 'Boat' && $atts['location'] !== 'Outstations')  {
         $output .= '<select id="tsm-location-filter" class="tsm-filter-dropdown">';
-        $output .= '<option value="" selected>Please select your preferred location</option>';
-        $output .= '<option value="all">All Locations</option>';
+        $output .= '<option value="">Please select your preferred location</option>';
+        $output .= '<option value="all"' . ($atts['location'] === 'all' ? ' selected' : '') . '>All Locations</option>';
         foreach ($all_locations as $location) {
-            
             if ($location->name !== 'Outstations') {
-                $output .= '<option value="' . esc_attr($location->name) . '">' . esc_html($location->name) . '</option>';
+                $selected = ($atts['location'] === $location->name) ? ' selected' : '';
+                $output .= '<option value="' . esc_attr($location->name) . '"' . $selected . '>' . esc_html($location->name) . '</option>';
             }
         }
         $output .= '</select>';
@@ -2699,7 +2703,7 @@ function tsm_display_vehicles_shortcode($atts) {
     $output .= '<div class="tsm-vehicle-container">';
     // Output all vehicles in a single grid
     if (!empty($vehicles)) {
-        $output .= '<div class="tsm-vehicle-grid"' . (empty($atts['location']) ? ' style="display: none;"' : '') . '>';
+        $output .= '<div class="tsm-vehicle-grid"' . ($atts['type'] !== 'Boat' && empty($atts['location']) ? ' style="display: none;"' : '') . '>';
         
         foreach ($vehicles as $vehicle) {
             $vehicle_type = get_post_meta($vehicle->ID, '_tsm_vehicle_type', true);
@@ -2720,52 +2724,53 @@ function tsm_display_vehicles_shortcode($atts) {
             $output .= '<h4>' . esc_html($vehicle->post_title) . '</h4>';
             
             $output .= '<div class="tsm-vehicle-details">';
+            // Only show location for non-boat vehicles
+            if ($vehicle_type == 'Boat' || $atts['location'] !== 'Outstations') {
+    $output .= '<p><i class="fas fa-map-marker-alt"></i><strong>Location:</strong> ' . esc_html($vehicle->location_name) . '</p>';
+}
+            
             $output .= '<p><i class="fas fa-users"></i><strong>Seats:</strong> ' . esc_html(get_post_meta($vehicle->ID, '_tsm_seats', true)) . '</p>';
-           if ($vehicle_type !== 'Boat') {
-    if (!empty($fuel_type)) {
-        $output .= '<p><i class="fas ' . esc_attr($fuel_icon) . '"></i><strong>Fuel Type:</strong> ' . esc_html($fuel_type) . '</p>';
-    }
-    
-    $ac_status = get_post_meta($vehicle->ID, '_tsm_ac_status', true);
-    if (!empty($ac_status)) {
-        $ac_icon = ($ac_status === 'AC') ? 'fa-snowflake' : 'fa-fan';
-        $output .= '<p><i class="fas ' . esc_attr($ac_icon) . '"></i><strong>AC Status:</strong> ' . esc_html($ac_status) . '</p>';
-    }
-}
-
-$min_booking_hours = get_post_meta($vehicle->ID, '_tsm_min_booking_hours', true);
-if (!empty($min_booking_hours)) {
-    $output .= '<p><i class="fas fa-clock"></i><strong>Min Booking Hours:</strong> ' . esc_html($min_booking_hours) . '</p>';
-}
-
-// Only show price if it's greater than 0
-if (!empty($vehicle->price) && floatval($vehicle->price) > 0) {
-    $output .= '<p><i class="fas fa-solid fa-indian-rupee-sign"></i><strong>Price:</strong> ₹' . esc_html(number_format($vehicle->price, 2)) . '</p>';
-}
-
-if ($vehicle_type !== 'Boat') {
-    // Only show Extra KM Price if it's greater than 0
-    if (!empty($vehicle->extra_km_price) && floatval($vehicle->extra_km_price) > 0) {
-        $output .= '<p><i class="fas fa-road"></i><strong>Extra KM Price:</strong> ₹' . esc_html(number_format($vehicle->extra_km_price, 2)) . '</p>';
-    }
-    
-    // Only show Extra Hour Price if it's greater than 0
-    if (!empty($vehicle->extra_hour_price) && floatval($vehicle->extra_hour_price) > 0) {
-        $output .= '<p><i class="fas fa-hourglass"></i><strong>Extra Hour Price:</strong> ₹' . esc_html(number_format($vehicle->extra_hour_price, 2)) . '</p>';
-    }
-}
-
-// Only show Max Range if it's greater than 0
-if ($vehicle_type === 'Car' && !empty($vehicle->max_range) && floatval($vehicle->max_range) > 0) {
-    $output .= '<p><i class="fas fa-solid fa-gauge"></i><strong>Max Range:</strong> ' . esc_html(number_format($vehicle->max_range, 2)) . ' km</p>';
-}
-
-if (!empty($vehicle->rental_type)) {
-    $output .= '<p><i class="fas fa-ticket-alt"></i><strong>Rental Type:</strong> ' . esc_html($vehicle->rental_type) . '</p>';
-}
-
-$output .= '<p><i class="fas fa-check"></i><strong>Available:</strong> Yes</p>';
-$output .= '</div>';
+            if ($vehicle_type !== 'Boat') {
+                if (!empty($fuel_type)) {
+                    $output .= '<p><i class="fas ' . esc_attr($fuel_icon) . '"></i><strong>Fuel Type:</strong> ' . esc_html($fuel_type) . '</p>';
+                }
+                
+                $ac_status = get_post_meta($vehicle->ID, '_tsm_ac_status', true);
+                if (!empty($ac_status)) {
+                    $ac_icon = ($ac_status === 'AC') ? 'fa-snowflake' : 'fa-fan';
+                    $output .= '<p><i class="fas ' . esc_attr($ac_icon) . '"></i><strong>AC Status:</strong> ' . esc_html($ac_status) . '</p>';
+                }
+            }
+            
+            $min_booking_hours = get_post_meta($vehicle->ID, '_tsm_min_booking_hours', true);
+            if (!empty($min_booking_hours)) {
+                $output .= '<p><i class="fas fa-clock"></i><strong>Min Booking Hours:</strong> ' . esc_html($min_booking_hours) . '</p>';
+            }
+            
+            if (!empty($vehicle->price) && floatval($vehicle->price) > 0) {
+                $output .= '<p><i class="fas fa-solid fa-indian-rupee-sign"></i><strong>Price:</strong> ₹' . esc_html(number_format($vehicle->price, 2)) . '</p>';
+            }
+            
+            if ($vehicle_type !== 'Boat') {
+                if (!empty($vehicle->extra_km_price) && floatval($vehicle->extra_km_price) > 0) {
+                    $output .= '<p><i class="fas fa-road"></i><strong>Extra KM Price:</strong> ₹' . esc_html(number_format($vehicle->extra_km_price, 2)) . '</p>';
+                }
+                
+                if (!empty($vehicle->extra_hour_price) && floatval($vehicle->extra_hour_price) > 0) {
+                    $output .= '<p><i class="fas fa-hourglass"></i><strong>Extra Hour Price:</strong> ₹' . esc_html(number_format($vehicle->extra_hour_price, 2)) . '</p>';
+                }
+            }
+            
+            if ($vehicle_type === 'Car' && !empty($vehicle->max_range) && floatval($vehicle->max_range) > 0) {
+                $output .= '<p><i class="fas fa-solid fa-gauge"></i><strong>Max Range:</strong> ' . esc_html(number_format($vehicle->max_range, 2)) . ' km</p>';
+            }
+            
+            if (!empty($vehicle->rental_type)) {
+                $output .= '<p><i class="fas fa-ticket-alt"></i><strong>Rental Type:</strong> ' . esc_html($vehicle->rental_type) . '</p>';
+            }
+            
+            $output .= '<p><i class="fas fa-check"></i><strong>Available:</strong> Yes</p>';
+            $output .= '</div>';
             
             // Use centralized URLs
             $output .= '<a href="' . esc_url($book_now_url) . '" class="tsm-btn book">Book Now</a>';
@@ -2778,9 +2783,9 @@ $output .= '</div>';
     }
     
     // No vehicles message
-    $output .= '<div class="tsm-no-results"' . (empty($atts['location']) ? '' : ' style="display: none;"') . '>';
-    if (empty($atts['location'])) {
-        $output .= '<p>Select your location to see the vehicles</p>';
+    $output .= '<div class="tsm-no-results"' . ($atts['type'] !== 'Boat' && empty($atts['location']) ? '' : ' style="display: none;"') . '>';
+    if ($atts['type'] !== 'Boat' && empty($atts['location'])) {
+        $output .= '<p>Please select a location to view available vehicles.</p>';
     } else {
         $output .= '<p>No vehicles available at this location.</p><a href="' . esc_url($services_url) . '" class="tsm-btn services">Explore Other Services</a>';
     }
@@ -2792,8 +2797,14 @@ $output .= '</div>';
     $output .= '
     <script>
     jQuery(document).ready(function($) {
-        // Initially hide/show based on whether location is preselected
-        ' . (empty($atts['location']) ? '
+        // Initially hide/show based on whether location is preselected or type is Boat
+        ' . ($atts['type'] === 'Boat' ? '
+        $(".tsm-vehicle-grid").show();
+        $(".tsm-vehicle").show();
+        if ($(".tsm-vehicle").length === 0) {
+            $(".tsm-no-results").show();
+        }
+        ' : (empty($atts['location']) ? '
         $(".tsm-vehicle-grid").hide();
         $(".tsm-no-results").show();
         ' : '
@@ -2802,7 +2813,7 @@ $output .= '</div>';
         if ($(".tsm-vehicle").length === 0) {
             $(".tsm-no-results").show();
         }
-        ') . '
+        ')) . '
         
         $("#tsm-location-filter").on("change", function() {
             var selectedLocation = $(this).val();
@@ -2815,7 +2826,7 @@ $output .= '</div>';
             
             if (selectedLocation === "") {
                 // Show default message if default option is selected
-                $(".tsm-no-results").html("<p>Select your location to see the vehicles</p>").show();
+                $(".tsm-no-results").html("<p>Please select a location to view available vehicles.</p>").show();
             } else if (selectedLocation === "all") {
                 // Show all vehicles
                 $(".tsm-vehicle-grid").show();
@@ -2850,8 +2861,8 @@ $output .= '</div>';
             history.pushState(null, "", newUrl);
         });
         
-        // Trigger change on load if location is preselected
-        if ($("#tsm-location-filter").val()) {
+        // Trigger change on load if location filter exists and location is preselected
+        if ($("#tsm-location-filter").length && $("#tsm-location-filter").val()) {
             $("#tsm-location-filter").trigger("change");
         }
     });
