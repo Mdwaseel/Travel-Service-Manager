@@ -138,11 +138,68 @@ function tsm_dashboard_page() {
             <a href="<?php echo esc_url(admin_url('admin.php?page=tsm-vehicles')); ?>" class="button button-primary" style="margin-right: 10px;">Manage Vehicles</a>
             <a href="<?php echo esc_url(admin_url('admin.php?page=tsm-assign-locations')); ?>" class="button button-primary" style="margin-right: 10px;">Assign Locations</a>
             <a href="<?php echo esc_url(admin_url('admin.php?page=tsm-tour-packages')); ?>" class="button button-primary" style="margin-right: 10px;">Manage Tour Packages</a>
+            <a href="<?php echo esc_url(admin_url('admin.php?page=tsm-tour-packages')); ?>" class="button button-primary" style="margin-right: 10px;">Manage Tour Packages</a>
             <a href="<?php echo esc_url(admin_url('admin.php?page=tsm-button-urls')); ?>" class="button button-primary">Manage Button URLs</a>
         </div>
     </div>
     <?php
 }
+
+
+function tsm_button_urls_page() {
+    // Check user capabilities
+    if (!current_user_can('manage_options')) {
+        wp_die(__('You do not have sufficient permissions to access this page.'));
+    }
+
+    // Handle form submission
+    if (isset($_POST['tsm_button_urls_submit']) && check_admin_referer('tsm_button_urls_nonce')) {
+        // Sanitize and save Book Now URL
+        $book_now_url = isset($_POST['tsm_book_now_url']) ? esc_url_raw($_POST['tsm_book_now_url']) : '';
+        update_option('tsm_book_now_url', $book_now_url);
+
+        // Sanitize and save Contact URL
+        $contact_url = isset($_POST['tsm_contact_url']) ? esc_url_raw($_POST['tsm_contact_url']) : '';
+        update_option('tsm_contact_url', $contact_url);
+
+        // Display success message
+        echo '<div class="notice notice-success is-dismissible"><p>Button URLs saved successfully!</p></div>';
+    }
+
+    // Get current URLs
+    $book_now_url = get_option('tsm_book_now_url', '#');
+    $contact_url = get_option('tsm_contact_url', '#');
+    ?>
+    <div class="wrap">
+        <h1>Manage Button URLs</h1>
+        <p>Configure the URLs for the "Book Now" and "Contact" buttons displayed on the tour pages.</p>
+        
+        <form method="post" action="">
+            <?php wp_nonce_field('tsm_button_urls_nonce'); ?>
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><label for="tsm_book_now_url">Book Now URL</label></th>
+                    <td>
+                        <input type="url" name="tsm_book_now_url" id="tsm_book_now_url" value="<?php echo esc_attr($book_now_url); ?>" class="regular-text" placeholder="https://example.com/book-now">
+                        <p class="description">Enter the URL for the "Book Now" button.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="tsm_contact_url">Contact URL</label></th>
+                    <td>
+                        <input type="url" name="tsm_contact_url" id="tsm_contact_url" value="<?php echo esc_attr($contact_url); ?>" class="regular-text" placeholder="https://example.com/contact">
+                        <p class="description">Enter the URL for the "Contact" button.</p>
+                    </td>
+                </tr>
+            </table>
+            <p class="submit">
+                <input type="submit" name="tsm_button_urls_submit" class="button button-primary" value="Save URLs">
+            </p>
+        </form>
+    </div>
+    <?php
+}
+
 
 
 // === Tour Packages Management ===
@@ -1448,14 +1505,19 @@ function tsm_featured_tours_shortcode($atts) {
         text-align: center;
      
     }
+
+    .tsm-btn:hover {
+        color:white
+    }
     
     .tsm-view-details {
         background-color: #0073aa;
-        color: white;
+       
     }
     
     .tsm-view-details:hover {
         background-color: #005f8c;
+        color: white;
     }
     
     .tsm-contact-btn {
@@ -1465,6 +1527,7 @@ function tsm_featured_tours_shortcode($atts) {
     
     .tsm-contact-btn:hover {
         background-color: #218838;
+        color: white;
     }
     
     .tsm-carousel-nav {
@@ -1769,7 +1832,7 @@ function tsm_vehicles_page() {
                     <tr>
                         <th scope="row"><label for="min_booking_hours">Minimum Booking Hours</label></th>
                         <td>
-                            <input type="number" name="min_booking_hours" id="min_booking_hours" value="<?php echo esc_attr(get_post_meta($edit_vehicle->ID, '_tsm_min_booking_hours', true)); ?>" required min="1">
+                            <input type="number" name="min_booking_hours" id="min_booking_hours" value="<?php echo esc_attr(get_post_meta($edit_vehicle->ID, '_tsm_min_booking_hours', true)); ?>" min="0">
                             <p class="description">Enter the minimum number of hours for booking this vehicle.</p>
                         </td>
                     </tr>
@@ -1847,7 +1910,7 @@ function tsm_vehicles_page() {
                     <tr>
                         <th scope="row"><label for="min_booking_hours">Minimum Booking Hours</label></th>
                         <td>
-                            <input type="number" name="min_booking_hours" id="min_booking_hours" required min="1" value="1">
+                            <input type="number" name="min_booking_hours" id="min_booking_hours" min="0" value="0">
                             <p class="description">Enter the minimum number of hours for booking this vehicle.</p>
                         </td>
                     </tr>
@@ -2658,24 +2721,51 @@ function tsm_display_vehicles_shortcode($atts) {
             
             $output .= '<div class="tsm-vehicle-details">';
             $output .= '<p><i class="fas fa-users"></i><strong>Seats:</strong> ' . esc_html(get_post_meta($vehicle->ID, '_tsm_seats', true)) . '</p>';
-            if ($vehicle_type !== 'Boat') {
-                $output .= '<p><i class="fas ' . esc_attr($fuel_icon) . '"></i><strong>Fuel Type:</strong> ' . esc_html($fuel_type) . '</p>';
-                $ac_status = get_post_meta($vehicle->ID, '_tsm_ac_status', true);
-                $ac_icon = ($ac_status === 'AC') ? 'fa-snowflake' : 'fa-fan';
-                $output .= '<p><i class="fas ' . esc_attr($ac_icon) . '"></i><strong>AC Status:</strong> ' . esc_html($ac_status) . '</p>';
-            }
-            $output .= '<p><i class="fas fa-clock"></i><strong>Min Booking Hours:</strong> ' . esc_html(get_post_meta($vehicle->ID, '_tsm_min_booking_hours', true)) . '</p>';
-            $output .= '<p><i class="fas fa-solid fa-indian-rupee-sign"></i><strong>Price:</strong> ₹' . esc_html(number_format($vehicle->price, 2)) . '</p>';
-            if ($vehicle_type !== 'Boat') {
-                $output .= '<p><i class="fas fa-road"></i><strong>Extra KM Price:</strong> ₹' . esc_html(number_format($vehicle->extra_km_price, 2)) . '</p>';
-                $output .= '<p><i class="fas fa-hourglass"></i><strong>Extra Hour Price:</strong> ₹' . esc_html(number_format($vehicle->extra_hour_price, 2)) . '</p>';
-            }
-            if ($vehicle_type === 'Car') {
-                $output .= '<p><i class="fas fa-solid fa-gauge"></i><strong>Max Range:</strong> ' . esc_html(number_format($vehicle->max_range, 2)) . ' km</p>';
-            }
-            $output .= '<p><i class="fas fa-ticket-alt"></i><strong>Rental Type:</strong> ' . esc_html($vehicle->rental_type) . '</p>';
-            $output .= '<p><i class="fas fa-check"></i><strong>Available:</strong> Yes</p>';
-            $output .= '</div>';
+           if ($vehicle_type !== 'Boat') {
+    if (!empty($fuel_type)) {
+        $output .= '<p><i class="fas ' . esc_attr($fuel_icon) . '"></i><strong>Fuel Type:</strong> ' . esc_html($fuel_type) . '</p>';
+    }
+    
+    $ac_status = get_post_meta($vehicle->ID, '_tsm_ac_status', true);
+    if (!empty($ac_status)) {
+        $ac_icon = ($ac_status === 'AC') ? 'fa-snowflake' : 'fa-fan';
+        $output .= '<p><i class="fas ' . esc_attr($ac_icon) . '"></i><strong>AC Status:</strong> ' . esc_html($ac_status) . '</p>';
+    }
+}
+
+$min_booking_hours = get_post_meta($vehicle->ID, '_tsm_min_booking_hours', true);
+if (!empty($min_booking_hours)) {
+    $output .= '<p><i class="fas fa-clock"></i><strong>Min Booking Hours:</strong> ' . esc_html($min_booking_hours) . '</p>';
+}
+
+// Only show price if it's greater than 0
+if (!empty($vehicle->price) && floatval($vehicle->price) > 0) {
+    $output .= '<p><i class="fas fa-solid fa-indian-rupee-sign"></i><strong>Price:</strong> ₹' . esc_html(number_format($vehicle->price, 2)) . '</p>';
+}
+
+if ($vehicle_type !== 'Boat') {
+    // Only show Extra KM Price if it's greater than 0
+    if (!empty($vehicle->extra_km_price) && floatval($vehicle->extra_km_price) > 0) {
+        $output .= '<p><i class="fas fa-road"></i><strong>Extra KM Price:</strong> ₹' . esc_html(number_format($vehicle->extra_km_price, 2)) . '</p>';
+    }
+    
+    // Only show Extra Hour Price if it's greater than 0
+    if (!empty($vehicle->extra_hour_price) && floatval($vehicle->extra_hour_price) > 0) {
+        $output .= '<p><i class="fas fa-hourglass"></i><strong>Extra Hour Price:</strong> ₹' . esc_html(number_format($vehicle->extra_hour_price, 2)) . '</p>';
+    }
+}
+
+// Only show Max Range if it's greater than 0
+if ($vehicle_type === 'Car' && !empty($vehicle->max_range) && floatval($vehicle->max_range) > 0) {
+    $output .= '<p><i class="fas fa-solid fa-gauge"></i><strong>Max Range:</strong> ' . esc_html(number_format($vehicle->max_range, 2)) . ' km</p>';
+}
+
+if (!empty($vehicle->rental_type)) {
+    $output .= '<p><i class="fas fa-ticket-alt"></i><strong>Rental Type:</strong> ' . esc_html($vehicle->rental_type) . '</p>';
+}
+
+$output .= '<p><i class="fas fa-check"></i><strong>Available:</strong> Yes</p>';
+$output .= '</div>';
             
             // Use centralized URLs
             $output .= '<a href="' . esc_url($book_now_url) . '" class="tsm-btn book">Book Now</a>';
@@ -3062,6 +3152,7 @@ function tsm_enqueue_styles() {
         
         .tsm-btn.view-details:hover {
             background-color: #005f8c;
+            color: white;
         }
         
         .tsm-btn.book {
@@ -3070,6 +3161,7 @@ function tsm_enqueue_styles() {
         
         .tsm-btn.book:hover {
             background-color: #218838;
+            color: white;
         }
         
         .tsm-contact-btn {
@@ -3078,6 +3170,7 @@ function tsm_enqueue_styles() {
         
         .tsm-contact-btn:hover {
             background-color: #218838;
+            color: white;
         }
         
         /* No Results Styles */
