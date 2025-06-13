@@ -2677,7 +2677,12 @@ function tsm_display_vehicles_shortcode($atts) {
     $vehicles = $wpdb->get_results($query);
     
     // Start output
-    $output = '<div class="tsm-vehicle-filter">';
+   if(!wp_doing_ajax()) { 
+    $output .= '<div class="tsm-vehicle-filter">'; 
+} else {
+    $output .= '<div class="tsm-vehicle-filter" style="display:none;">'; // Hidden in AJAX calls
+}
+
     
     // Add location filter dropdown only if vehicle type is not Boat
     if ($atts['type'] !== 'Boat' && $atts['location'] !== 'Outstations')  {
@@ -2701,6 +2706,7 @@ function tsm_display_vehicles_shortcode($atts) {
     $output .= '</div>';
     
     $output .= '<div class="tsm-vehicle-container">';
+    
     // Output all vehicles in a single grid
     if (!empty($vehicles)) {
         $output .= '<div class="tsm-vehicle-grid"' . ($atts['type'] !== 'Boat' && empty($atts['location']) ? ' style="display: none;"' : '') . '>';
@@ -2726,8 +2732,8 @@ function tsm_display_vehicles_shortcode($atts) {
             $output .= '<div class="tsm-vehicle-details">';
             // Only show location for non-boat vehicles
             if ($vehicle_type == 'Boat' || $atts['location'] !== 'Outstations') {
-    $output .= '<p><i class="fas fa-map-marker-alt"></i><strong>Location:</strong> ' . esc_html($vehicle->location_name) . '</p>';
-}
+                $output .= '<p><i class="fas fa-map-marker-alt"></i><strong>Location:</strong> ' . esc_html($vehicle->location_name) . '</p>';
+            }
             
             $output .= '<p><i class="fas fa-users"></i><strong>Seats:</strong> ' . esc_html(get_post_meta($vehicle->ID, '_tsm_seats', true)) . '</p>';
             if ($vehicle_type !== 'Boat') {
@@ -2793,11 +2799,11 @@ function tsm_display_vehicles_shortcode($atts) {
     
     $output .= '</div>'; // .tsm-vehicle-container
     
-    // Add JavaScript for filtering
+    // Add JavaScript for filtering with AJAX
     $output .= '
     <script>
     jQuery(document).ready(function($) {
-        // Initially hide/show based on whether location is preselected or type is Boat
+        // Initially show vehicles based on default location
         ' . ($atts['type'] === 'Boat' ? '
         $(".tsm-vehicle-grid").show();
         $(".tsm-vehicle").show();
@@ -2819,52 +2825,41 @@ function tsm_display_vehicles_shortcode($atts) {
             var selectedLocation = $(this).val();
             var vehicleType = $("#tsm-vehicle-type").val() || "";
             
-            // Hide all vehicles and no results message
-            $(".tsm-vehicle").hide();
-            $(".tsm-no-results").hide();
-            $(".tsm-vehicle-grid").hide();
+            // Show loading state
+            $(".tsm-vehicle-container").html("<div class=\'tsm-loading\'>Loading vehicles...</div>");
             
-            if (selectedLocation === "") {
-                // Show default message if default option is selected
-                $(".tsm-no-results").html("<p>Please select a location to view available vehicles.</p>").show();
-            } else if (selectedLocation === "all") {
-                // Show all vehicles
-                $(".tsm-vehicle-grid").show();
-                $(".tsm-vehicle").show();
-                if ($(".tsm-vehicle").length === 0) {
-                    $(".tsm-no-results").html("<p>No vehicles available at this location.</p><a href=\"" + "' . esc_js($services_url) . '" + "\" class=\"tsm-btn services\">Explore Other Services</a>").show();
+            // Make AJAX request to get vehicles for selected location
+            $.ajax({
+                url: "' . admin_url('admin-ajax.php') . '",
+                type: "POST",
+                data: {
+                    action: "tsm_get_vehicles_by_location",
+                    location: selectedLocation,
+                    type: vehicleType
+                },
+                success: function(response) {
+                    $(".tsm-vehicle-container").html(response);
+                    
+                    // Update URL without reloading
+                    var baseUrl = window.location.href.split("?")[0];
+                    var newUrl = baseUrl;
+                    
+                    if (selectedLocation && selectedLocation !== "") {
+                        newUrl += "?location=" + encodeURIComponent(selectedLocation);
+                        if (vehicleType) {
+                            newUrl += "&type=" + encodeURIComponent(vehicleType);
+                        }
+                    } else if (vehicleType) {
+                        newUrl += "?type=" + encodeURIComponent(vehicleType);
+                    }
+                    
+                    history.pushState(null, "", newUrl);
+                },
+                error: function() {
+                    $(".tsm-vehicle-container").html("<div class=\'tsm-error\'>Error loading vehicles. Please try again.</div>");
                 }
-            } else {
-                // Show vehicles for the selected location
-                var visibleVehicles = $(".tsm-vehicle[data-location=\"" + selectedLocation + "\"]");
-                if (visibleVehicles.length > 0) {
-                    $(".tsm-vehicle-grid").show();
-                    visibleVehicles.show();
-                } else {
-                    $(".tsm-no-results").html("<p>No vehicles available at this location.</p><a href=\"" + "' . esc_js($services_url) . '" + "\" class=\"tsm-btn services\">Explore Other Services</a>").show();
-                }
-            }
-            
-            // Update URL without reloading
-            var baseUrl = window.location.href.split("?")[0];
-            var newUrl = baseUrl;
-            
-            if (selectedLocation && selectedLocation !== "") {
-                newUrl += "?location=" + encodeURIComponent(selectedLocation);
-                if (vehicleType) {
-                    newUrl += "&type=" + encodeURIComponent(vehicleType);
-                }
-            } else if (vehicleType) {
-                newUrl += "?type=" + encodeURIComponent(vehicleType);
-            }
-            
-            history.pushState(null, "", newUrl);
+            });
         });
-        
-        // Trigger change on load if location filter exists and location is preselected
-        if ($("#tsm-location-filter").length && $("#tsm-location-filter").val()) {
-            $("#tsm-location-filter").trigger("change");
-        }
     });
     </script>
     ';
@@ -2872,6 +2867,21 @@ function tsm_display_vehicles_shortcode($atts) {
     return $output;
 }
 add_shortcode('show_vehicles', 'tsm_display_vehicles_shortcode');
+
+// Add AJAX handler
+add_action('wp_ajax_tsm_get_vehicles_by_location', 'tsm_get_vehicles_by_location');
+add_action('wp_ajax_nopriv_tsm_get_vehicles_by_location', 'tsm_get_vehicles_by_location');
+
+function tsm_get_vehicles_by_location() {
+    $location = isset($_POST['location']) ? sanitize_text_field($_POST['location']) : '';
+    $type = isset($_POST['type']) ? sanitize_text_field($_POST['type']) : '';
+    
+     add_filter('wp_doing_ajax', '__return_true');
+
+
+    echo do_shortcode('[show_vehicles location="' . $location . '" type="' . $type . '"]');
+    wp_die();
+}
 
 function tsm_display_tours_shortcode($atts) {
     $atts = shortcode_atts([], $atts, 'show_tours');
@@ -3352,6 +3362,13 @@ function tsm_enqueue_styles() {
             .tsm-vehicle img {
                 height: 160px !important;
             }
+        }
+        .tsm-location-label {
+                display: block;
+                font-weight: bold;
+                margin-bottom: 8px;
+                font-size: 16px;
+                color: #333;
         }
     ";
     
