@@ -15,8 +15,6 @@ Orange Travels is a powerful WordPress plugin designed to manage travel-related 
 - Custom database tables for locations and assignments  
 - Shortcode for displaying responsive featured tour carousels
 
----
-
 ## Features
 
 ### ✅ Tour Package Management
@@ -62,8 +60,6 @@ Orange Travels is a powerful WordPress plugin designed to manage travel-related 
 - `wp_tsm_vehicle_assignments`: Stores vehicle-location mappings
 - Automatic schema versioning on activation
 
----
-
 ## Installation
 
 ### 1. Download the Plugin
@@ -83,8 +79,6 @@ The plugin auto-creates the required tables upon activation.
 
 ### 5. Configure Settings
 Navigate to **Orange Travels** in the sidebar to access and configure features.
-
----
 
 ## Usage
 
@@ -107,8 +101,6 @@ Navigate to **Orange Travels** in the sidebar to access and configure features.
 - 2 on tablet  
 - 1 on mobile
 - **Styling:** Customize using your theme’s CSS or within plugin styles
-
----
 
 ## Shortcode
 
