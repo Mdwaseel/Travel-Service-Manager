@@ -94,7 +94,6 @@ Navigate to **Orange Travels** in the sidebar to access and configure features.
 ### 🖼️ Frontend Display
 
 - **Shortcode:**  
-[featured_tours_carousel]
 
 - **Responsive Settings:**  
 - 3 items on desktop  
